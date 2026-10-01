@@ -1,0 +1,900 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Photo Cropper</title>
+    <style>
+        * { margin: 0; padding: 0; box-sizing: border-box; }
+
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+            background: #0d1117;
+            color: #e6edf3;
+            height: 100vh;
+            display: flex;
+            flex-direction: column;
+            overflow: hidden;
+            user-select: none;
+        }
+
+        /* ── Toolbar ── */
+        .toolbar {
+            background: #161b22;
+            border-bottom: 1px solid #30363d;
+            padding: 6px 12px;
+            display: flex;
+            align-items: center;
+            gap: 4px;
+            flex-wrap: wrap;
+            z-index: 10;
+        }
+        .toolbar h1 {
+            font-size: 15px;
+            font-weight: 700;
+            color: #a78bfa;
+            white-space: nowrap;
+            margin-right: 4px;
+            letter-spacing: -0.3px;
+        }
+        .sep {
+            width: 1px;
+            height: 24px;
+            background: #30363d;
+            margin: 0 6px;
+            flex-shrink: 0;
+        }
+        .toolbar-group {
+            display: flex;
+            align-items: center;
+            gap: 5px;
+        }
+        .toolbar-group label {
+            font-size: 11px;
+            color: #8b949e;
+            white-space: nowrap;
+            text-transform: uppercase;
+            letter-spacing: 0.5px;
+        }
+
+        /* ── Buttons ── */
+        button, .btn {
+            background: #21262d;
+            color: #e6edf3;
+            border: 1px solid #30363d;
+            padding: 5px 10px;
+            border-radius: 6px;
+            cursor: pointer;
+            font-size: 12px;
+            transition: background 0.15s, border-color 0.15s;
+            white-space: nowrap;
+            display: inline-flex;
+            align-items: center;
+            gap: 4px;
+        }
+        button:hover { background: #30363d; border-color: #8b949e; }
+        button:active { background: #3a414a; }
+        button.primary { background: #8b5cf6; border-color: #8b5cf6; color: #fff; }
+        button.primary:hover { background: #7c3aed; }
+        button.primary:disabled { background: #3a3a5a; border-color: #3a3a5a; cursor: not-allowed; opacity: 0.5; }
+        button.active { background: #8b5cf6; border-color: #8b5cf6; color: #fff; }
+        button.sm { padding: 4px 7px; font-size: 13px; min-width: 28px; justify-content: center; }
+
+        /* ── Inputs ── */
+        input[type="number"] {
+            width: 48px;
+            background: #0d1117;
+            color: #e6edf3;
+            border: 1px solid #30363d;
+            padding: 4px 6px;
+            border-radius: 4px;
+            text-align: center;
+            font-size: 13px;
+            -moz-appearance: textfield;
+        }
+        input[type="number"]::-webkit-inner-spin-button,
+        input[type="number"]::-webkit-outer-spin-button { -webkit-appearance: none; }
+        input[type="number"]:focus { outline: none; border-color: #8b5cf6; }
+
+        select {
+            background: #0d1117;
+            color: #e6edf3;
+            border: 1px solid #30363d;
+            padding: 4px 6px;
+            border-radius: 4px;
+            font-size: 12px;
+            cursor: pointer;
+        }
+        select:focus { outline: none; border-color: #8b5cf6; }
+
+        /* ── Color Swatch ── */
+        .color-wrapper {
+            position: relative;
+            width: 26px;
+            height: 26px;
+            border-radius: 4px;
+            border: 1px solid #30363d;
+            overflow: hidden;
+            cursor: pointer;
+        }
+        .color-wrapper input[type="color"] {
+            position: absolute;
+            top: -4px;
+            left: -4px;
+            width: 34px;
+            height: 34px;
+            border: none;
+            cursor: pointer;
+            padding: 0;
+        }
+
+        /* ── Canvas Area ── */
+        .canvas-container {
+            flex: 1;
+            position: relative;
+            overflow: hidden;
+            background: #0d1117;
+        }
+        canvas {
+            display: block;
+            position: absolute;
+            top: 0; left: 0;
+        }
+
+        /* ── Drop Zone ── */
+        .drop-zone {
+            position: absolute;
+            inset: 0;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            z-index: 5;
+            transition: background 0.2s;
+        }
+        .drop-zone.hidden { display: none; }
+        .drop-zone.drag-over { background: rgba(139, 92, 246, 0.08); }
+        .drop-zone .upload-area {
+            border: 2px dashed #30363d;
+            border-radius: 16px;
+            padding: 48px 64px;
+            text-align: center;
+            transition: border-color 0.2s, background 0.2s;
+            cursor: pointer;
+        }
+        .drop-zone.drag-over .upload-area { border-color: #8b5cf6; background: rgba(139,92,246,0.06); }
+        .drop-zone .upload-area:hover { border-color: #8b949e; background: rgba(255,255,255,0.02); }
+        .drop-zone .icon { font-size: 48px; margin-bottom: 12px; opacity: 0.6; }
+        .drop-zone h2 { font-size: 16px; font-weight: 500; color: #e6edf3; margin-bottom: 6px; }
+        .drop-zone p { font-size: 12px; color: #8b949e; }
+
+        /* ── Status Bar ── */
+        .status-bar {
+            background: #161b22;
+            border-top: 1px solid #30363d;
+            padding: 4px 16px;
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            font-size: 11px;
+            color: #8b949e;
+            gap: 16px;
+            flex-wrap: wrap;
+        }
+        .status-bar .hint { opacity: 0.7; }
+        .status-bar .dims { color: #a78bfa; font-weight: 500; }
+
+        /* ── JPEG Quality ── */
+        #qualityGroup { transition: opacity 0.2s; }
+        #qualityGroup.hidden { opacity: 0; pointer-events: none; width: 0; overflow: hidden; margin: 0; padding: 0; gap: 0; }
+        #qualityGroup input[type="range"] { width: 60px; accent-color: #8b5cf6; }
+
+        /* ── Toast ── */
+        .toast {
+            position: fixed;
+            bottom: 48px;
+            left: 50%;
+            transform: translateX(-50%) translateY(20px);
+            background: #238636;
+            color: #fff;
+            padding: 8px 20px;
+            border-radius: 8px;
+            font-size: 13px;
+            opacity: 0;
+            transition: opacity 0.3s, transform 0.3s;
+            z-index: 100;
+            pointer-events: none;
+        }
+        .toast.show { opacity: 1; transform: translateX(-50%) translateY(0); }
+
+        /* ── Responsive ── */
+        @media (max-width: 700px) {
+            .toolbar { padding: 4px 8px; gap: 3px; }
+            .sep { margin: 0 3px; height: 20px; }
+            .toolbar h1 { font-size: 13px; }
+            .status-bar { font-size: 10px; padding: 3px 8px; }
+        }
+    </style>
+</head>
+<body>
+    <input type="file" id="fileInput" accept="image/*" style="display:none">
+
+    <!-- Toolbar -->
+    <div class="toolbar">
+        <h1>✂️ Photo Cropper</h1>
+        <div class="sep"></div>
+        <div class="toolbar-group">
+            <button id="uploadBtn" title="Upload image (or drag & drop, or Ctrl+V)">📂 Upload</button>
+        </div>
+        <div class="sep"></div>
+        <div class="toolbar-group">
+            <label>Ratio</label>
+            <input type="number" id="ratioW" value="6" min="1" max="100" title="Width ratio">
+            <span style="color:#8b949e; font-size:14px; font-weight:700;">:</span>
+            <input type="number" id="ratioH" value="7" min="1" max="100" title="Height ratio">
+            <button class="sm" id="swapBtn" title="Swap ratio">⇄</button>
+        </div>
+        <div class="sep"></div>
+        <div class="toolbar-group">
+            <label>Fill</label>
+            <div class="color-wrapper" title="Pick fill colour">
+                <input type="color" id="fillColorPicker" value="#ffffff">
+            </div>
+            <button class="sm" id="autoColorBtn" title="Auto-detect from image corners">Auto</button>
+            <button class="sm" id="eyedropperBtn" title="Pick colour from image">💧</button>
+        </div>
+        <div class="sep"></div>
+        <div class="toolbar-group">
+            <label>Zoom</label>
+            <button class="sm" id="zoomOutBtn" title="Zoom out (−)">−</button>
+            <span id="zoomLevel" style="font-size:12px; min-width:36px; text-align:center; color:#e6edf3;">100%</span>
+            <button class="sm" id="zoomInBtn" title="Zoom in (+)">+</button>
+        </div>
+        <div class="sep"></div>
+        <div class="toolbar-group">
+            <button id="fillModeBtn" title="Image fills the box (crop excess)">Fill</button>
+            <button id="fitModeBtn" title="Entire image fits inside the box (pad with fill colour)">Fit</button>
+            <button id="resetBtn" title="Reset to default position">↺</button>
+        </div>
+        <div class="sep"></div>
+        <div class="toolbar-group">
+            <select id="formatSelect" title="Output format">
+                <option value="png">PNG</option>
+                <option value="jpeg">JPEG</option>
+            </select>
+            <div class="toolbar-group" id="qualityGroup">
+                <label>Q</label>
+                <input type="range" id="jpegQuality" min="10" max="100" value="92" title="JPEG quality">
+                <span id="qualityVal" style="font-size:11px; min-width:24px; color:#e6edf3;">92</span>
+            </div>
+            <button class="primary" id="saveBtn" disabled title="Save cropped image (Ctrl+S)">💾 Save</button>
+        </div>
+    </div>
+
+    <!-- Canvas Area -->
+    <div class="canvas-container" id="canvasContainer">
+        <canvas id="canvas"></canvas>
+        <div class="drop-zone" id="dropZone">
+            <div class="upload-area" id="uploadArea">
+                <div class="icon">🖼️</div>
+                <h2>Drop an image here</h2>
+                <p>or click to upload &nbsp;·&nbsp; or paste from clipboard (Ctrl+V)</p>
+                <p style="margin-top:8px; color:#8b949e;">Supports JPG, PNG, WebP, BMP, GIF</p>
+            </div>
+        </div>
+    </div>
+
+    <!-- Status Bar -->
+    <div class="status-bar">
+        <span class="hint" id="hintText">Upload an image to get started</span>
+        <span class="dims" id="dimsText"></span>
+    </div>
+
+    <!-- Toast -->
+    <div class="toast" id="toast">Saved!</div>
+
+<script>
+// ─── State ───────────────────────────────────────────────
+let img = null;
+let imgX = 0, imgY = 0;          // image top-left in CSS px
+let displayScale = 1;             // CSS px per source px
+let initialFillScale = 1;         // reference "Fill" scale
+let aspectW = 6, aspectH = 7;
+let fillColor = '#ffffff';
+let originalFilename = 'image';
+let showGrid = true;
+let eyedropperActive = false;
+
+// Drag state
+let isDragging = false;
+let dragStartX = 0, dragStartY = 0;
+let imgStartX = 0, imgStartY = 0;
+
+// Touch state
+let lastTouchDist = 0;
+
+// Canvas / box geometry (CSS px)
+let canvasW = 0, canvasH = 0;
+let boxX = 0, boxY = 0, boxW = 0, boxH = 0;
+
+// ─── DOM refs ────────────────────────────────────────────
+const canvas      = document.getElementById('canvas');
+const ctx         = canvas.getContext('2d');
+const container   = document.getElementById('canvasContainer');
+const dropZone    = document.getElementById('dropZone');
+const uploadArea  = document.getElementById('uploadArea');
+const fileInput   = document.getElementById('fileInput');
+const ratioWInput = document.getElementById('ratioW');
+const ratioHInput = document.getElementById('ratioH');
+const colorPicker = document.getElementById('fillColorPicker');
+const formatSel   = document.getElementById('formatSelect');
+const qualityGrp  = document.getElementById('qualityGroup');
+const qualitySldr = document.getElementById('jpegQuality');
+const qualityVal  = document.getElementById('qualityVal');
+const zoomLabel   = document.getElementById('zoomLevel');
+const saveBtn     = document.getElementById('saveBtn');
+const hintText    = document.getElementById('hintText');
+const dimsText    = document.getElementById('dimsText');
+const toast       = document.getElementById('toast');
+
+// ─── Init ────────────────────────────────────────────────
+function init() {
+    resizeCanvas();
+    new ResizeObserver(resizeCanvas).observe(container);
+
+    // Upload triggers
+    document.getElementById('uploadBtn').addEventListener('click', () => fileInput.click());
+    uploadArea.addEventListener('click', () => fileInput.click());
+    fileInput.addEventListener('change', e => { if (e.target.files[0]) loadFile(e.target.files[0]); });
+
+    // Drag-and-drop
+    document.addEventListener('dragover', e => { e.preventDefault(); dropZone.classList.add('drag-over'); });
+    document.addEventListener('dragleave', e => { if (!e.relatedTarget || e.relatedTarget === document.documentElement) dropZone.classList.remove('drag-over'); });
+    document.addEventListener('drop', e => {
+        e.preventDefault();
+        dropZone.classList.remove('drag-over');
+        const file = e.dataTransfer?.files?.[0];
+        if (file && file.type.startsWith('image/')) loadFile(file);
+    });
+
+    // Paste
+    document.addEventListener('paste', e => {
+        const items = e.clipboardData?.items;
+        if (!items) return;
+        for (const item of items) {
+            if (item.type.startsWith('image/')) { loadFile(item.getAsFile()); break; }
+        }
+    });
+
+    // Aspect ratio
+    ratioWInput.addEventListener('change', onRatioChange);
+    ratioHInput.addEventListener('change', onRatioChange);
+    document.getElementById('swapBtn').addEventListener('click', () => {
+        const tmp = ratioWInput.value; ratioWInput.value = ratioHInput.value; ratioHInput.value = tmp;
+        onRatioChange();
+    });
+
+    // Fill colour
+    colorPicker.addEventListener('input', e => { fillColor = e.target.value; render(); });
+    document.getElementById('autoColorBtn').addEventListener('click', autoDetectColor);
+    document.getElementById('eyedropperBtn').addEventListener('click', toggleEyedropper);
+
+    // Zoom buttons
+    document.getElementById('zoomInBtn').addEventListener('click',  () => applyZoom(1.15, canvasW / 2, canvasH / 2));
+    document.getElementById('zoomOutBtn').addEventListener('click', () => applyZoom(1 / 1.15, canvasW / 2, canvasH / 2));
+
+    // Fit / Fill / Reset
+    document.getElementById('fillModeBtn').addEventListener('click', () => { if (img) { setFillMode(); render(); } });
+    document.getElementById('fitModeBtn').addEventListener('click',  () => { if (img) { setFitMode(); render(); } });
+    document.getElementById('resetBtn').addEventListener('click',    () => { if (img) { setFillMode(); render(); } });
+
+    // Format / quality
+    formatSel.addEventListener('change', () => qualityGrp.classList.toggle('hidden', formatSel.value !== 'jpeg'));
+    qualitySldr.addEventListener('input', () => { qualityVal.textContent = qualitySldr.value; });
+    qualityGrp.classList.add('hidden');
+
+    // Save
+    saveBtn.addEventListener('click', saveImage);
+
+    // Canvas events
+    canvas.addEventListener('mousedown', onMouseDown);
+    canvas.addEventListener('mousemove', onMouseMove);
+    canvas.addEventListener('mouseup', onMouseUp);
+    canvas.addEventListener('mouseleave', onMouseUp);
+    canvas.addEventListener('wheel', onWheel, { passive: false });
+
+    canvas.addEventListener('touchstart', onTouchStart, { passive: false });
+    canvas.addEventListener('touchmove', onTouchMove, { passive: false });
+    canvas.addEventListener('touchend', onTouchEnd);
+
+    // Keyboard
+    document.addEventListener('keydown', onKeyDown);
+
+    render();
+}
+
+// ─── Canvas sizing ───────────────────────────────────────
+function resizeCanvas() {
+    const dpr = window.devicePixelRatio || 1;
+    const rect = container.getBoundingClientRect();
+    canvasW = rect.width;
+    canvasH = rect.height;
+    canvas.width = canvasW * dpr;
+    canvas.height = canvasH * dpr;
+    canvas.style.width = canvasW + 'px';
+    canvas.style.height = canvasH + 'px';
+    calculateBox();
+    if (img) {
+        // Maintain relative position to box centre
+        setFillMode();
+    }
+    render();
+}
+
+// ─── Box calculation ─────────────────────────────────────
+function calculateBox() {
+    const padding = 32;
+    const availW = canvasW - padding * 2;
+    const availH = canvasH - padding * 2;
+    if (availW <= 0 || availH <= 0) return;
+
+    const targetAR = aspectW / aspectH;
+    const availAR = availW / availH;
+
+    if (targetAR > availAR) {
+        boxW = availW;
+        boxH = availW / targetAR;
+    } else {
+        boxH = availH;
+        boxW = availH * targetAR;
+    }
+    boxX = (canvasW - boxW) / 2;
+    boxY = (canvasH - boxH) / 2;
+}
+
+// ─── Image loading ───────────────────────────────────────
+function loadFile(file) {
+    originalFilename = file.name || 'image';
+    const reader = new FileReader();
+    reader.onload = e => {
+        const newImg = new Image();
+        newImg.onload = () => {
+            img = newImg;
+            dropZone.classList.add('hidden');
+            saveBtn.disabled = false;
+            setFillMode();
+            autoDetectColor();
+            render();
+            hintText.textContent = 'Drag to move · Scroll to zoom · Arrow keys for fine adjustment';
+        };
+        newImg.src = e.target.result;
+    };
+    reader.readAsDataURL(file);
+}
+
+// ─── Positioning modes ───────────────────────────────────
+function setFillMode() {
+    // Scale so image fills the entire box (no empty space, crop excess)
+    const imgAR = img.naturalWidth / img.naturalHeight;
+    const boxAR = aspectW / aspectH;
+    if (imgAR > boxAR) {
+        // Image wider → match heights
+        displayScale = boxH / img.naturalHeight;
+    } else {
+        // Image taller → match widths
+        displayScale = boxW / img.naturalWidth;
+    }
+    initialFillScale = displayScale;
+    centreImage();
+}
+
+function setFitMode() {
+    // Scale so entire image fits inside the box (may have empty space)
+    const imgAR = img.naturalWidth / img.naturalHeight;
+    const boxAR = aspectW / aspectH;
+    if (imgAR > boxAR) {
+        displayScale = boxW / img.naturalWidth;
+    } else {
+        displayScale = boxH / img.naturalHeight;
+    }
+    initialFillScale = boxH / img.naturalHeight; // reference stays as fill
+    // Recalculate fill ref for zoom %
+    const boxAR2 = aspectW / aspectH;
+    if ((img.naturalWidth / img.naturalHeight) > boxAR2) {
+        initialFillScale = boxH / img.naturalHeight;
+    } else {
+        initialFillScale = boxW / img.naturalWidth;
+    }
+    centreImage();
+}
+
+function centreImage() {
+    const iw = img.naturalWidth * displayScale;
+    const ih = img.naturalHeight * displayScale;
+    imgX = boxX + (boxW - iw) / 2;
+    imgY = boxY + (boxH - ih) / 2;
+}
+
+// ─── Ratio change ────────────────────────────────────────
+function onRatioChange() {
+    const w = parseInt(ratioWInput.value) || 1;
+    const h = parseInt(ratioHInput.value) || 1;
+    aspectW = Math.max(1, Math.min(100, w));
+    aspectH = Math.max(1, Math.min(100, h));
+    ratioWInput.value = aspectW;
+    ratioHInput.value = aspectH;
+    calculateBox();
+    if (img) setFillMode();
+    render();
+}
+
+// ─── Render ──────────────────────────────────────────────
+function render() {
+    const dpr = window.devicePixelRatio || 1;
+    ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+
+    // Background
+    ctx.fillStyle = '#0d1117';
+    ctx.fillRect(0, 0, canvasW, canvasH);
+
+    if (!img) {
+        drawEmptyBox();
+        return;
+    }
+
+    const iw = img.naturalWidth * displayScale;
+    const ih = img.naturalHeight * displayScale;
+
+    // Dimmed image (full, outside the box)
+    ctx.globalAlpha = 0.25;
+    ctx.drawImage(img, imgX, imgY, iw, ih);
+    ctx.globalAlpha = 1.0;
+
+    // Clipped to box: fill colour + bright image
+    ctx.save();
+    ctx.beginPath();
+    ctx.rect(boxX, boxY, boxW, boxH);
+    ctx.clip();
+
+    ctx.fillStyle = fillColor;
+    ctx.fillRect(boxX, boxY, boxW, boxH);
+    ctx.drawImage(img, imgX, imgY, iw, ih);
+
+    ctx.restore();
+
+    // Box border
+    ctx.strokeStyle = 'rgba(255,255,255,0.7)';
+    ctx.lineWidth = 1.5;
+    ctx.setLineDash([8, 5]);
+    ctx.strokeRect(boxX, boxY, boxW, boxH);
+    ctx.setLineDash([]);
+
+    // Rule-of-thirds grid
+    if (showGrid) {
+        ctx.strokeStyle = 'rgba(255,255,255,0.12)';
+        ctx.lineWidth = 0.5;
+        ctx.beginPath();
+        for (let i = 1; i <= 2; i++) {
+            const gx = boxX + (boxW / 3) * i;
+            const gy = boxY + (boxH / 3) * i;
+            ctx.moveTo(gx, boxY); ctx.lineTo(gx, boxY + boxH);
+            ctx.moveTo(boxX, gy); ctx.lineTo(boxX + boxW, gy);
+        }
+        ctx.stroke();
+    }
+
+    // Aspect ratio label
+    ctx.fillStyle = 'rgba(255,255,255,0.35)';
+    ctx.font = '11px system-ui, sans-serif';
+    ctx.textAlign = 'center';
+    ctx.fillText(`${aspectW}:${aspectH}`, boxX + boxW / 2, boxY - 8);
+
+    updateInfo();
+}
+
+function drawEmptyBox() {
+    ctx.strokeStyle = 'rgba(255,255,255,0.15)';
+    ctx.lineWidth = 1;
+    ctx.setLineDash([6, 4]);
+    ctx.strokeRect(boxX, boxY, boxW, boxH);
+    ctx.setLineDash([]);
+
+    ctx.fillStyle = 'rgba(255,255,255,0.1)';
+    ctx.font = '12px system-ui, sans-serif';
+    ctx.textAlign = 'center';
+    ctx.fillText(`${aspectW}:${aspectH}`, boxX + boxW / 2, boxY + boxH / 2 + 4);
+}
+
+function updateInfo() {
+    // Zoom percentage (relative to fill scale)
+    const pct = Math.round((displayScale / initialFillScale) * 100);
+    zoomLabel.textContent = pct + '%';
+
+    // Output dimensions
+    const srcW = boxW / displayScale;
+    const srcH = boxH / displayScale;
+    let outW = Math.round(srcW);
+    let outH = Math.round(srcH);
+    clampDims(outW, outH);
+    dimsText.textContent = `Output: ${outW} × ${outH} px  ·  Source: ${img.naturalWidth} × ${img.naturalHeight} px`;
+}
+
+function clampDims(w, h) {
+    const maxDim = 10000, minDim = 10;
+    if (Math.max(w, h) > maxDim) { const r = maxDim / Math.max(w, h); w = Math.round(w * r); h = Math.round(h * r); }
+    if (Math.min(w, h) < minDim) { const r = minDim / Math.min(w, h); w = Math.round(w * r); h = Math.round(h * r); }
+    return [w, h];
+}
+
+// ─── Mouse events ────────────────────────────────────────
+function canvasCoords(e) {
+    const rect = canvas.getBoundingClientRect();
+    return { x: e.clientX - rect.left, y: e.clientY - rect.top };
+}
+
+function onMouseDown(e) {
+    if (!img) return;
+    const { x, y } = canvasCoords(e);
+
+    if (eyedropperActive) {
+        sampleColorAtScreen(x, y);
+        return;
+    }
+
+    isDragging = true;
+    dragStartX = x; dragStartY = y;
+    imgStartX = imgX; imgStartY = imgY;
+    canvas.style.cursor = 'grabbing';
+}
+
+function onMouseMove(e) {
+    if (!isDragging) return;
+    const { x, y } = canvasCoords(e);
+    imgX = imgStartX + (x - dragStartX);
+    imgY = imgStartY + (y - dragStartY);
+    render();
+}
+
+function onMouseUp() {
+    isDragging = false;
+    canvas.style.cursor = eyedropperActive ? 'crosshair' : 'grab';
+}
+
+function onWheel(e) {
+    e.preventDefault();
+    if (!img) return;
+    const { x, y } = canvasCoords(e);
+    const factor = e.deltaY < 0 ? 1.08 : 1 / 1.08;
+    applyZoom(factor, x, y);
+}
+
+function applyZoom(factor, cx, cy) {
+    if (!img) return;
+    const newScale = displayScale * factor;
+
+    // Clamp: 5% to 2000% of fill scale
+    const minS = initialFillScale * 0.05;
+    const maxS = initialFillScale * 20;
+    if (newScale < minS || newScale > maxS) return;
+
+    // Zoom centred on (cx, cy)
+    const imgCX = (cx - imgX) / displayScale;
+    const imgCY = (cy - imgY) / displayScale;
+    displayScale = newScale;
+    imgX = cx - imgCX * displayScale;
+    imgY = cy - imgCY * displayScale;
+
+    render();
+}
+
+// ─── Touch events ────────────────────────────────────────
+function onTouchStart(e) {
+    e.preventDefault();
+    if (!img) return;
+
+    if (e.touches.length === 1) {
+        const t = e.touches[0];
+        const { x, y } = touchCoords(t);
+
+        if (eyedropperActive) { sampleColorAtScreen(x, y); return; }
+
+        isDragging = true;
+        dragStartX = x; dragStartY = y;
+        imgStartX = imgX; imgStartY = imgY;
+    } else if (e.touches.length === 2) {
+        isDragging = false;
+        lastTouchDist = touchDist(e.touches);
+    }
+}
+
+function onTouchMove(e) {
+    e.preventDefault();
+    if (!img) return;
+
+    if (e.touches.length === 1 && isDragging) {
+        const { x, y } = touchCoords(e.touches[0]);
+        imgX = imgStartX + (x - dragStartX);
+        imgY = imgStartY + (y - dragStartY);
+        render();
+    } else if (e.touches.length === 2) {
+        const dist = touchDist(e.touches);
+        const factor = dist / lastTouchDist;
+        const centre = touchCentre(e.touches);
+        applyZoom(factor, centre.x, centre.y);
+        lastTouchDist = dist;
+    }
+}
+
+function onTouchEnd(e) {
+    if (e.touches.length < 2) isDragging = false;
+}
+
+function touchCoords(t) {
+    const rect = canvas.getBoundingClientRect();
+    return { x: t.clientX - rect.left, y: t.clientY - rect.top };
+}
+function touchDist(touches) {
+    return Math.hypot(touches[1].clientX - touches[0].clientX, touches[1].clientY - touches[0].clientY);
+}
+function touchCentre(touches) {
+    const rect = canvas.getBoundingClientRect();
+    return {
+        x: (touches[0].clientX + touches[1].clientX) / 2 - rect.left,
+        y: (touches[0].clientY + touches[1].clientY) / 2 - rect.top
+    };
+}
+
+// ─── Keyboard ────────────────────────────────────────────
+function onKeyDown(e) {
+    if (!img) return;
+    // Don't capture when typing in inputs
+    if (e.target.tagName === 'INPUT' || e.target.tagName === 'SELECT') return;
+
+    const step = e.shiftKey ? 10 : 1;
+
+    switch (e.key) {
+        case 'ArrowLeft':  e.preventDefault(); imgX -= step; render(); break;
+        case 'ArrowRight': e.preventDefault(); imgX += step; render(); break;
+        case 'ArrowUp':    e.preventDefault(); imgY -= step; render(); break;
+        case 'ArrowDown':  e.preventDefault(); imgY += step; render(); break;
+        case '+': case '=': e.preventDefault(); applyZoom(1.08, canvasW / 2, canvasH / 2); break;
+        case '-': case '_': e.preventDefault(); applyZoom(1 / 1.08, canvasW / 2, canvasH / 2); break;
+        case '0': e.preventDefault(); setFillMode(); render(); break;
+        case 's': case 'S':
+            if (e.ctrlKey || e.metaKey) { e.preventDefault(); saveImage(); }
+            break;
+    }
+}
+
+// ─── Eyedropper ──────────────────────────────────────────
+function toggleEyedropper() {
+    eyedropperActive = !eyedropperActive;
+    canvas.style.cursor = eyedropperActive ? 'crosshair' : 'grab';
+    document.getElementById('eyedropperBtn').classList.toggle('active', eyedropperActive);
+}
+
+function sampleColorAtScreen(sx, sy) {
+    // Convert screen coords to image pixel coords
+    const ix = Math.round((sx - imgX) / displayScale);
+    const iy = Math.round((sy - imgY) / displayScale);
+
+    if (ix >= 0 && ix < img.naturalWidth && iy >= 0 && iy < img.naturalHeight) {
+        const tc = document.createElement('canvas');
+        tc.width = 1; tc.height = 1;
+        const tctx = tc.getContext('2d');
+        tctx.drawImage(img, ix, iy, 1, 1, 0, 0, 1, 1);
+        const px = tctx.getImageData(0, 0, 1, 1).data;
+        fillColor = '#' + [px[0], px[1], px[2]].map(v => v.toString(16).padStart(2, '0')).join('');
+        colorPicker.value = fillColor;
+        render();
+    }
+
+    eyedropperActive = false;
+    canvas.style.cursor = 'grab';
+    document.getElementById('eyedropperBtn').classList.remove('active');
+}
+
+// ─── Auto colour detection ──────────────────────────────
+function autoDetectColor() {
+    if (!img) return;
+
+    const maxS = 200;
+    const w = Math.min(img.naturalWidth, maxS);
+    const h = Math.min(img.naturalHeight, maxS);
+    const tc = document.createElement('canvas');
+    tc.width = w; tc.height = h;
+    const tctx = tc.getContext('2d');
+    tctx.drawImage(img, 0, 0, w, h);
+
+    const s = Math.max(2, Math.min(12, Math.floor(Math.min(w, h) / 10)));
+    let r = 0, g = 0, b = 0, n = 0;
+
+    // Sample corners
+    for (const [cx, cy] of [[0, 0], [w - s, 0], [0, h - s], [w - s, h - s]]) {
+        const d = tctx.getImageData(cx, cy, s, s).data;
+        for (let i = 0; i < d.length; i += 4) { r += d[i]; g += d[i+1]; b += d[i+2]; n++; }
+    }
+
+    r = Math.round(r / n);
+    g = Math.round(g / n);
+    b = Math.round(b / n);
+    fillColor = '#' + [r, g, b].map(v => v.toString(16).padStart(2, '0')).join('');
+    colorPicker.value = fillColor;
+    render();
+}
+
+// ─── Save ────────────────────────────────────────────────
+function saveImage() {
+    if (!img) return;
+
+    const srcX = (boxX - imgX) / displayScale;
+    const srcY = (boxY - imgY) / displayScale;
+    const srcW = boxW / displayScale;
+    const srcH = boxH / displayScale;
+
+    let outW = Math.round(srcW);
+    let outH = Math.round(srcH);
+
+    // Clamp output dimensions
+    const maxDim = 10000, minDim = 10;
+    if (Math.max(outW, outH) > maxDim) {
+        const r = maxDim / Math.max(outW, outH);
+        outW = Math.round(outW * r);
+        outH = Math.round(outH * r);
+    }
+    if (Math.min(outW, outH) < minDim) {
+        const r = minDim / Math.min(outW, outH);
+        outW = Math.round(outW * r);
+        outH = Math.round(outH * r);
+    }
+
+    const oc = document.createElement('canvas');
+    oc.width = outW;
+    oc.height = outH;
+    const octx = oc.getContext('2d');
+
+    // Fill background
+    octx.fillStyle = fillColor;
+    octx.fillRect(0, 0, outW, outH);
+
+    // Draw image at correct scale and offset
+    const outScale = outW / srcW;
+    octx.save();
+    octx.scale(outScale, outScale);
+    octx.drawImage(img, -srcX, -srcY);
+    octx.restore();
+
+    // Determine format and download
+    const fmt = formatSel.value;
+    const mime = fmt === 'jpeg' ? 'image/jpeg' : 'image/png';
+    const quality = fmt === 'jpeg' ? parseInt(qualitySldr.value) / 100 : undefined;
+    const ext = fmt === 'jpeg' ? '.jpg' : '.png';
+
+    const baseName = originalFilename.replace(/\.[^.]+$/, '') || 'image';
+
+    // Use toBlob for better performance with large images
+    oc.toBlob(blob => {
+        const url = URL.createObjectURL(blob);
+        const a = document.createElement('a');
+        a.href = url;
+        a.download = `${baseName}_cropped_${aspectW}x${aspectH}${ext}`;
+        document.body.appendChild(a);
+        a.click();
+        document.body.removeChild(a);
+        setTimeout(() => URL.revokeObjectURL(url), 1000);
+        showToast('Saved!');
+    }, mime, quality);
+}
+
+// ─── Toast ───────────────────────────────────────────────
+function showToast(msg) {
+    toast.textContent = msg;
+    toast.classList.add('show');
+    setTimeout(() => toast.classList.remove('show'), 2000);
+}
+
+// ─── Start ───────────────────────────────────────────────
+init();
+</script>
+</body>
+</html>
