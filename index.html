@@ -271,7 +271,9 @@
         <div class="toolbar-group">
             <label>Zoom</label>
             <button class="sm" id="zoomOutBtn" title="Zoom out (−)">−</button>
-            <span id="zoomLevel" style="font-size:12px; min-width:36px; text-align:center; color:#e6edf3;">100%</span>
+            <input type="range" id="zoomSlider" min="0" max="100" value="50" step="0.5" title="Drag to zoom" style="width:90px; accent-color:#8b5cf6; cursor:pointer;">
+            <input type="number" id="zoomInput" value="100" min="5" max="2000" step="1" title="Type exact zoom %" style="width:50px;">
+            <span style="font-size:11px; color:#8b949e;">%</span>
             <button class="sm" id="zoomInBtn" title="Zoom in (+)">+</button>
         </div>
         <div class="sep"></div>
@@ -368,7 +370,8 @@ const formatSel   = document.getElementById('formatSelect');
 const qualityGrp  = document.getElementById('qualityGroup');
 const qualitySldr = document.getElementById('jpegQuality');
 const qualityVal  = document.getElementById('qualityVal');
-const zoomLabel   = document.getElementById('zoomLevel');
+const zoomSlider  = document.getElementById('zoomSlider');
+const zoomInput   = document.getElementById('zoomInput');
 const saveBtn     = document.getElementById('saveBtn');
 const hintText    = document.getElementById('hintText');
 const dimsText    = document.getElementById('dimsText');
@@ -419,9 +422,22 @@ function init() {
     document.getElementById('autoColorBtn').addEventListener('click', autoDetectColor);
     document.getElementById('eyedropperBtn').addEventListener('click', toggleEyedropper);
 
-    // Zoom buttons
-    document.getElementById('zoomInBtn').addEventListener('click',  () => applyZoom(1.15, canvasW / 2, canvasH / 2));
-    document.getElementById('zoomOutBtn').addEventListener('click', () => applyZoom(1 / 1.15, canvasW / 2, canvasH / 2));
+    // Zoom buttons (5% steps) + slider + typed input
+    document.getElementById('zoomInBtn').addEventListener('click',  () => applyZoom(1.05, canvasW / 2, canvasH / 2));
+    document.getElementById('zoomOutBtn').addEventListener('click', () => applyZoom(1 / 1.05, canvasW / 2, canvasH / 2));
+
+    zoomSlider.addEventListener('input', () => {
+        if (!img) return;
+        const pct = sliderToZoom(parseFloat(zoomSlider.value));
+        setZoomPercent(pct);
+    });
+
+    zoomInput.addEventListener('change', () => {
+        if (!img) return;
+        const pct = Math.max(5, Math.min(2000, parseInt(zoomInput.value) || 100));
+        zoomInput.value = pct;
+        setZoomPercent(pct);
+    });
 
     // Fit / Fill / Reset
     document.getElementById('fillModeBtn').addEventListener('click', () => { if (img) { setFillMode(); render(); } });
@@ -728,9 +744,11 @@ function drawEmptyBox() {
 }
 
 function updateInfo() {
-    // Zoom percentage (relative to fill scale)
+    // Sync zoom slider + input
     const pct = Math.round((displayScale / initialFillScale) * 100);
-    zoomLabel.textContent = pct + '%';
+    zoomInput.value = pct;
+    const sliderVal = zoomToSlider(Math.max(ZOOM_LOG_MIN, Math.min(ZOOM_LOG_MAX, pct)));
+    zoomSlider.value = Math.max(0, Math.min(100, sliderVal));
 
     // Output dimensions
     const [outW, outH] = getOutputDims();
@@ -780,8 +798,40 @@ function onWheel(e) {
     e.preventDefault();
     if (!img) return;
     const { x, y } = canvasCoords(e);
-    const factor = e.deltaY < 0 ? 1.08 : 1 / 1.08;
+    const factor = e.deltaY < 0 ? 1.05 : 1 / 1.05;
     applyZoom(factor, x, y);
+}
+
+// ─── Zoom helpers (log-scale slider) ─────────────────────
+const ZOOM_LOG_MIN = 5, ZOOM_LOG_MAX = 500;
+
+function sliderToZoom(val) {
+    // Slider 0–100 → zoom 5%–500% (logarithmic)
+    return ZOOM_LOG_MIN * Math.pow(ZOOM_LOG_MAX / ZOOM_LOG_MIN, val / 100);
+}
+
+function zoomToSlider(pct) {
+    // Zoom % → slider 0–100
+    return 100 * Math.log(pct / ZOOM_LOG_MIN) / Math.log(ZOOM_LOG_MAX / ZOOM_LOG_MIN);
+}
+
+function setZoomPercent(pct) {
+    // Set zoom to exact percentage, centred on the crop box
+    const newScale = initialFillScale * (pct / 100);
+    const minS = initialFillScale * 0.05;
+    const maxS = initialFillScale * 20;
+    if (newScale < minS || newScale > maxS) return;
+
+    // Zoom centred on box centre
+    const cx = boxX + boxW / 2;
+    const cy = boxY + boxH / 2;
+    const imgCX = (cx - imgX) / displayScale;
+    const imgCY = (cy - imgY) / displayScale;
+    displayScale = newScale;
+    imgX = cx - imgCX * displayScale;
+    imgY = cy - imgCY * displayScale;
+
+    render();
 }
 
 function applyZoom(factor, cx, cy) {
