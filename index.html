@@ -210,7 +210,7 @@
 
         /* ── JPEG Quality ── */
         #qualityGroup { transition: opacity 0.2s; }
-        #qualityGroup.hidden { opacity: 0; pointer-events: none; width: 0; overflow: hidden; margin: 0; padding: 0; gap: 0; }
+        #qualityGroup.hidden { opacity: 0; pointer-events: none; visibility: hidden; }
         #qualityGroup input[type="range"] { width: 60px; accent-color: #8b5cf6; }
 
         /* ── Toast ── */
@@ -489,15 +489,20 @@ function init() {
 function resizeCanvas() {
     const dpr = window.devicePixelRatio || 1;
     const rect = container.getBoundingClientRect();
-    canvasW = rect.width;
-    canvasH = rect.height;
+    const newW = rect.width;
+    const newH = rect.height;
+
+    // Only reset position if canvas actually changed size
+    const sizeChanged = (Math.abs(newW - canvasW) > 0.5 || Math.abs(newH - canvasH) > 0.5);
+
+    canvasW = newW;
+    canvasH = newH;
     canvas.width = canvasW * dpr;
     canvas.height = canvasH * dpr;
     canvas.style.width = canvasW + 'px';
     canvas.style.height = canvasH + 'px';
     calculateBox();
-    if (img) {
-        // Maintain relative position to box centre
+    if (img && sizeChanged) {
         setFillMode();
     }
     render();
