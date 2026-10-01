@@ -184,6 +184,30 @@
         .status-bar .hint { opacity: 0.7; }
         .status-bar .dims { color: #a78bfa; font-weight: 500; }
 
+        /* ── Output Size ── */
+        .size-display {
+            font-size: 12px;
+            color: #e6edf3;
+            white-space: nowrap;
+            min-width: 40px;
+        }
+        .size-display .computed {
+            color: #8b949e;
+        }
+        .preset-btns {
+            display: flex;
+            gap: 3px;
+        }
+        .preset-btns button {
+            padding: 3px 6px;
+            font-size: 10px;
+            border-radius: 4px;
+        }
+        .preset-btns button.active {
+            background: #8b5cf6;
+            border-color: #8b5cf6;
+        }
+
         /* ── JPEG Quality ── */
         #qualityGroup { transition: opacity 0.2s; }
         #qualityGroup.hidden { opacity: 0; pointer-events: none; width: 0; overflow: hidden; margin: 0; padding: 0; gap: 0; }
@@ -258,14 +282,26 @@
         </div>
         <div class="sep"></div>
         <div class="toolbar-group">
+            <label>Size</label>
+            <input type="number" id="outputW" value="600" min="10" max="10000" title="Output width in pixels" style="width:56px;">
+            <span class="size-display">× <span id="outputHDisplay">700</span> px</span>
+            <div class="preset-btns">
+                <button data-width="300" title="300px wide">300</button>
+                <button data-width="600" class="active" title="600px wide">600</button>
+                <button data-width="900" title="900px wide">900</button>
+                <button data-width="0" title="Use native resolution from crop">Max</button>
+            </div>
+        </div>
+        <div class="sep"></div>
+        <div class="toolbar-group">
             <select id="formatSelect" title="Output format">
                 <option value="png">PNG</option>
                 <option value="jpeg">JPEG</option>
             </select>
             <div class="toolbar-group" id="qualityGroup">
                 <label>Q</label>
-                <input type="range" id="jpegQuality" min="10" max="100" value="92" title="JPEG quality">
-                <span id="qualityVal" style="font-size:11px; min-width:24px; color:#e6edf3;">92</span>
+                <input type="range" id="jpegQuality" min="10" max="100" value="85" title="JPEG quality">
+                <span id="qualityVal" style="font-size:11px; min-width:24px; color:#e6edf3;">85</span>
             </div>
             <button class="primary" id="saveBtn" disabled title="Save cropped image (Ctrl+S)">💾 Save</button>
         </div>
@@ -304,6 +340,7 @@ let fillColor = '#ffffff';
 let originalFilename = 'image';
 let showGrid = true;
 let eyedropperActive = false;
+let outputWidth = 600;            // desired output width (0 = native resolution)
 
 // Drag state
 let isDragging = false;
@@ -336,6 +373,9 @@ const saveBtn     = document.getElementById('saveBtn');
 const hintText    = document.getElementById('hintText');
 const dimsText    = document.getElementById('dimsText');
 const toast       = document.getElementById('toast');
+const outputWInput = document.getElementById('outputW');
+const outputHDisp  = document.getElementById('outputHDisplay');
+const presetBtns   = document.querySelectorAll('.preset-btns button');
 
 // ─── Init ────────────────────────────────────────────────
 function init() {
@@ -392,6 +432,22 @@ function init() {
     formatSel.addEventListener('change', () => qualityGrp.classList.toggle('hidden', formatSel.value !== 'jpeg'));
     qualitySldr.addEventListener('input', () => { qualityVal.textContent = qualitySldr.value; });
     qualityGrp.classList.add('hidden');
+
+    // Output size
+    outputWInput.addEventListener('change', onOutputSizeChange);
+    outputWInput.addEventListener('input', updateOutputHDisplay);
+    presetBtns.forEach(btn => {
+        btn.addEventListener('click', () => {
+            const w = parseInt(btn.dataset.width);
+            outputWidth = w;
+            outputWInput.value = w || '';
+            outputWInput.disabled = (w === 0);
+            presetBtns.forEach(b => b.classList.remove('active'));
+            btn.classList.add('active');
+            updateOutputHDisplay();
+            if (img) updateInfo();
+        });
+    });
 
     // Save
     saveBtn.addEventListener('click', saveImage);
@@ -525,7 +581,73 @@ function onRatioChange() {
     ratioHInput.value = aspectH;
     calculateBox();
     if (img) setFillMode();
+    updateOutputHDisplay();
     render();
+}
+
+// ─── Output size ─────────────────────────────────────────
+function onOutputSizeChange() {
+    const v = parseInt(outputWInput.value);
+    if (v && v >= 10 && v <= 10000) {
+        outputWidth = v;
+    } else if (!outputWInput.value || outputWInput.value === '0') {
+        outputWidth = 0; // native
+    }
+    // Clear preset highlight if custom value
+    presetBtns.forEach(b => {
+        b.classList.toggle('active', parseInt(b.dataset.width) === outputWidth);
+    });
+    updateOutputHDisplay();
+    if (img) updateInfo();
+}
+
+function updateOutputHDisplay() {
+    if (outputWidth === 0) {
+        // Show native resolution info
+        if (img) {
+            const srcW = boxW / displayScale;
+            const srcH = boxH / displayScale;
+            outputHDisp.textContent = Math.round(srcH);
+            outputWInput.value = '';
+            outputWInput.placeholder = Math.round(srcW);
+        } else {
+            outputHDisp.textContent = '—';
+            outputWInput.value = '';
+            outputWInput.placeholder = 'auto';
+        }
+    } else {
+        const h = Math.round(outputWidth * (aspectH / aspectW));
+        outputHDisp.textContent = h;
+    }
+}
+
+function getOutputDims() {
+    const srcW = boxW / displayScale;
+    const srcH = boxH / displayScale;
+
+    let outW, outH;
+    if (outputWidth === 0) {
+        // Native resolution from crop
+        outW = Math.round(srcW);
+        outH = Math.round(srcH);
+    } else {
+        outW = outputWidth;
+        outH = Math.round(outputWidth * (aspectH / aspectW));
+    }
+
+    // Clamp
+    const maxDim = 10000, minDim = 10;
+    if (Math.max(outW, outH) > maxDim) {
+        const r = maxDim / Math.max(outW, outH);
+        outW = Math.round(outW * r);
+        outH = Math.round(outH * r);
+    }
+    if (Math.min(outW, outH) < minDim) {
+        const r = minDim / Math.min(outW, outH);
+        outW = Math.round(outW * r);
+        outH = Math.round(outH * r);
+    }
+    return [outW, outH, srcW, srcH];
 }
 
 // ─── Render ──────────────────────────────────────────────
@@ -611,19 +733,13 @@ function updateInfo() {
     zoomLabel.textContent = pct + '%';
 
     // Output dimensions
-    const srcW = boxW / displayScale;
-    const srcH = boxH / displayScale;
-    let outW = Math.round(srcW);
-    let outH = Math.round(srcH);
-    clampDims(outW, outH);
+    const [outW, outH] = getOutputDims();
     dimsText.textContent = `Output: ${outW} × ${outH} px  ·  Source: ${img.naturalWidth} × ${img.naturalHeight} px`;
-}
 
-function clampDims(w, h) {
-    const maxDim = 10000, minDim = 10;
-    if (Math.max(w, h) > maxDim) { const r = maxDim / Math.max(w, h); w = Math.round(w * r); h = Math.round(h * r); }
-    if (Math.min(w, h) < minDim) { const r = minDim / Math.min(w, h); w = Math.round(w * r); h = Math.round(h * r); }
-    return [w, h];
+    // Also refresh the output height display for "Max" mode
+    if (outputWidth === 0) {
+        updateOutputHDisplay();
+    }
 }
 
 // ─── Mouse events ────────────────────────────────────────
@@ -832,21 +948,7 @@ function saveImage() {
     const srcW = boxW / displayScale;
     const srcH = boxH / displayScale;
 
-    let outW = Math.round(srcW);
-    let outH = Math.round(srcH);
-
-    // Clamp output dimensions
-    const maxDim = 10000, minDim = 10;
-    if (Math.max(outW, outH) > maxDim) {
-        const r = maxDim / Math.max(outW, outH);
-        outW = Math.round(outW * r);
-        outH = Math.round(outH * r);
-    }
-    if (Math.min(outW, outH) < minDim) {
-        const r = minDim / Math.min(outW, outH);
-        outW = Math.round(outW * r);
-        outH = Math.round(outH * r);
-    }
+    const [outW, outH] = getOutputDims();
 
     const oc = document.createElement('canvas');
     oc.width = outW;
@@ -857,7 +959,7 @@ function saveImage() {
     octx.fillStyle = fillColor;
     octx.fillRect(0, 0, outW, outH);
 
-    // Draw image at correct scale and offset
+    // Draw image scaled from source crop region to output dimensions
     const outScale = outW / srcW;
     octx.save();
     octx.scale(outScale, outScale);
@@ -877,12 +979,13 @@ function saveImage() {
         const url = URL.createObjectURL(blob);
         const a = document.createElement('a');
         a.href = url;
-        a.download = `${baseName}_cropped_${aspectW}x${aspectH}${ext}`;
+        a.download = `${baseName}_cropped_${aspectW}x${aspectH}_${outW}x${outH}${ext}`;
         document.body.appendChild(a);
         a.click();
         document.body.removeChild(a);
         setTimeout(() => URL.revokeObjectURL(url), 1000);
-        showToast('Saved!');
+        const sizeKB = Math.round(blob.size / 1024);
+        showToast(`Saved! ${outW}×${outH} · ${sizeKB} KB`);
     }, mime, quality);
 }
 
